@@ -1,0 +1,170 @@
+# HW1 - Wines of the PNW
+
+Author: Mike Kimmell
+
+**Abstract:**
+
+This is a technical blog post of **both** an HTML file *and* [.qmd file](wine_of_pnw.qmd) hosted on GitHub pages.
+
+# Setup
+
+**Step Up Code:**
+```{r}
+library(tidyverse)
+
+wine <- readRDS(gzcon(url("https://github.com/cd-public/DSLM-505/raw/master/dat/wine.rds"))) %>%
+  filter(province=="Oregon" | province=="California" | province=="New York") %>% 
+  mutate(cherry=as.integer(str_detect(description,"[Cc]herry"))) %>% 
+  mutate(lprice=log(price)) %>% 
+  select(lprice, points, cherry, province)
+```
+
+**Explanation:**
+
+> <span style="color:red;font-weight:bold">TODO</span>: 
+
+The first line pulls an .rds file from github and reads it into a tibble 'wine'. 
+The second line filters the dataset to entries where 'province' is Oregon, California, or New York. 
+The third line creates a new integer variable called 'cherry' that detects 
+  if the word 'cherry' or 'Cherry' appears in the description. 
+The fourth line creates a new column called 'lprice' which is the log of the 'price' column. 
+And finally, the fifth column selects only the 'lprice', 'points', 'cherry', and 'province' columns, 
+  dropping the rest from tibble.
+
+# Multiple Regression
+
+## Linear Models
+
+First run a linear regression model with log of price as the dependent variable and 'points' and 'cherry' as features (variables).
+
+```{r}
+library(moderndive)
+m1 <- lm(lprice ~ points + cherry, data=wine)
+get_regression_summaries(m1)
+```
+
+**Explanation:**
+
+> <span style="color:red;font-weight:bold">TODO</span>: 
+
+The first line installs the moderndive package. 
+The second line uses the lm function to make a linear model of lprice and points, 
+  with cherry as a feature and uses the dataset 'wine' and assigns it to the list, 'm1'. 
+  The last line gathers the key summary statistics for thos regression.
+
+> <span style="color:red;font-weight:bold">TODO</span>: 
+
+The RMSE for this model is 0.469. Generally, the lower the RMSE score, 
+  the better the model performs, but without another model to compare against, 
+  it's hard to evaluate whether 0.469 is 'good', or just 'great'. 
+Though, an RMSE lower than 1 is certainly promising.
+
+## Interaction Models
+
+Add an interaction between 'points' and 'cherry'. 
+
+```{r}
+m2 <- lm(lprice ~ points * cherry, data=wine)
+get_regression_summaries(m2)
+get_regression_table(m2)
+```
+
+> <span style="color:red;font-weight:bold">TODO</span>: 
+
+The first line creates a new linear model 'm2', 
+  but this time with an interaction between points and cherry. 
+The second line prints out the summary statistics.
+
+> <span style="color:red;font-weight:bold">TODO</span>: 
+
+Once again, our RMSE value is 0.469, now that we have 2 models to compare against, 
+  we could compare these two values. 
+Though, since they are the exact same, it doesn't give us any indication of which model is better.  
+
+### The Interaction Variable
+
+> <span style="color:red;font-weight:bold">TODO</span>: *interpret the coefficient on the interaction variable.* <br>[Explain as you would to a non-technical manager.](https://youtube.com/clip/UgkxY7ohjoimIef6zpPLjgQHqJcJHeZptuVm?feature=shared)
+
+As shown above, there is a positive synergy between the points and cherry variables, albeit minimal. 
+In general, having 'Cherry' in the wine description can have a negative impact on price, 
+  so while there is synergy with the wine's score, it doesn't seem that it has quite the same payoff.
+
+## Applications
+
+Determine which province (Oregon, California, or New York), does the 'cherry' feature in the data affect price most?
+
+```{r}
+ca_wine <- wine %>%
+  filter(province=="California")
+
+m_ca <- lm(lprice ~ cherry, data=ca_wine)
+get_regression_summaries(m_ca)
+get_regression_table(m_ca)
+
+or_wine <- wine %>%
+  filter(province=="Oregon")
+
+m_or <- lm(lprice ~ cherry, data=or_wine)
+get_regression_summaries(m_or)
+get_regression_table(m_or)
+
+ny_wine <- wine %>%
+  filter(province=="New York")
+
+m_ny <- lm(lprice ~ cherry, data=ny_wine)
+get_regression_summaries(m_ny)
+get_regression_table(m_ny)
+```
+
+> <span style="color:red;font-weight:bold">TODO</span>: 
+
+First, we filter down the datasets to each of the 3 provinces we are interested in. 
+Then we create new linear models for each of the subset datasets. 
+And we use moderndive package to pull the relevant data out.
+
+Interpreting the values, we can see that all models have statistically significant 'cherry' values.
+P-values for all 3 are '0', and the rmse of all 3 models are pretty low.
+Even when taking standard error and confidence intervals into account, 
+  it's clear that the 'cherry' variable is strongest in Oregon, at 0.303.
+
+# Scenarios
+
+## On Accuracy
+
+Imagine a model to distinguish New York wines from those in California and Oregon. After a few days of work, you take some measurements and note: "I've achieved 91% accuracy on my model!" 
+
+Should you be impressed? Why or why not?
+
+
+> <span style="color:red;font-weight:bold">TODO</span>:
+
+There are two main things to consider in this example. The first is this issue of overfitting:
+  Have we made the model so complex in trying to explain the existing data 
+    that we are unable to predict new values easily.
+Second, looking at just Accuracy can be misleading if the data is extremely imprecise.
+  A test for Precision and Recall should be done to determine if the model is indeed effective.
+
+## On Ethics
+
+Why is understanding this vignette important to use machine learning in an ethical manner?
+
+> <span style="color:red;font-weight:bold">TODO</span>:
+
+In this (relatively innocuous) example, we come to realize that existence of 'Cherry' 
+  in the description of various wines has generally minimal impact on the pricing of the wine. 
+However, as we segment the data down, we can see that this isn't necessarily true for Oregon.
+If we were to switch our focus to a topic with more loaded data points, such as race, sex, or religion,
+  and we were examining a problem with more on the line than the price of wines,
+  we can begin to see why these seemingly small implications need to be examined, 
+  lest we use the data in a misleading way.
+
+## Ignorance is no excuse
+Imagine you are working on a model to predict the likelihood that an individual loses their job as the result of the changing federal policy under new presidential administrations. You have a very large dataset with many hundreds of features, but you are worried that including indicators like age, income or gender might pose some ethical problems. When you discuss these concerns with your boss, she tells you to simply drop those features from the model. Does this solve the ethical issue? Why or why not?
+
+> <span style="color:red;font-weight:bold">TODO</span>:
+
+Critical examination of these kinds of datapoints are extremely important to understand how models behave.
+Burying the relationships that they describe does not solve the ethical issue, in fact,
+  it only serves to strengthen the status quo, which has historically underserved marginalized groups.
+If (and it's a massive if) the variables do not strongly correlate to job losses,
+  then it just as important to explore and explain that too.
