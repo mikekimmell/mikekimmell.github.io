@@ -1,2 +1,2 @@
-# mikekimmell.github.io
-DATA 505 Site
+# DATA 505 Homework
+Homework 1
