@@ -1,0 +1,103 @@
+**Author: Mike Kimmell**
+
+**Abstract:**
+
+This is a technical blog post of **both** an HTML file *and* [.qmd file](wine_features.qmd) hosted on GitHub pages.
+
+**Step Up Code:**
+```{r}
+library(tidyverse)
+library(caret)
+library(randomForest)
+library(fastDummies)
+wine <- readRDS(gzcon(url("https://github.com/cd-public/D505/raw/master/dat/wine.rds")))
+```
+
+**Explanataion:**
+
+> <span style="color:red;font-weight:bold">TODO</span>: *write your line-by-line explanation of the code here*
+
+Load necessary libraries and read in data file to 'wine'.
+
+# Feature Engineering
+
+We begin by engineering an number of features.
+
+1. Create a total of 10 features (including points). 
+2. Remove all rows with a missing value. 
+3. Ensure only log(price) and engineering features are the only columns that remain in the `wino` dataframe.
+
+```{r}
+wino <- wine %>% 
+  mutate(lprice=log(price)) %>%
+  mutate(late90s_wine = year < 2000) %>%
+  mutate(early00s_wine = year >= 2000 & year <= 2005) %>%
+  mutate(late00s_wine = year > 2005 & year < 2010) %>%
+  mutate(early10s_wine = year >= 2010) %>%
+  mutate(CA_wine = province == "California") %>%
+  mutate(OR_wine = province == "Oregon") %>%
+  mutate(WA_wine = province == "Washington") %>%
+  mutate(NY_wine = province == "New York") %>%
+  mutate(oth_US_wine = country == "US" & province != "California" & province != "Oregon"
+         & province != "Washington" & province != "New York") %>%
+  drop_na(lprice, points, late90s_wine, early00s_wine, late00s_wine, early10s_wine,
+          CA_wine, OR_wine, WA_wine, NY_wine, oth_US_wine) %>%
+  select(lprice, points, late90s_wine, early00s_wine, late00s_wine, early10s_wine, 
+         CA_wine, OR_wine, WA_wine, NY_wine, oth_US_wine)
+```
+
+**Explanataion:**
+
+> <span style="color:red;font-weight:bold">TODO</span>: *write your line-by-line explanation of the code here*
+
+Log of Price was a given, the remaining features I created were divvying up the timeframe in half-decade chunks as well as exploring the top 4 US wine-producing states (by number of reviews) and summing up the rest of the US states into an aggregated 'Other' category.
+I then dropped any null values and then subsequently dropped all other columns in the dataset.
+
+# Caret
+
+We now use a train/test split to evaluate the features.
+
+1. Use the Caret library to partition the wino dataframe into an 80/20 split. 
+2. Run a linear regression with bootstrap resampling. 
+3. Report RMSE on the test partition of the data.
+
+```{r}
+wine_index <- createDataPartition(wino$lprice, p=0.8, list=FALSE)
+wino_tr <- wino[wine_index, ]
+wino_te <- wino[-wine_index, ]
+
+m1 <- train(lprice ~ .,
+            data = wino_tr,
+            method = "lm",
+            trControl = trainControl(method = "boot", number = 25))
+
+postResample(
+  pred = predict(m1, wino_te),
+  obs = wino_te$lprice
+)
+
+```
+**Explanataion:**
+
+> <span style="color:red;font-weight:bold">TODO</span>: *write your line-by-line explanation of the code here*
+
+First create our index variable and then use that to divvy up the data into our training and testing datasets.
+Then, create a linear model by using the training data and the bootstrap method (I went with the default number of runs, 25)
+Last, run the model on the testing dataset and see how it performed.
+The RMSE of our Testing dataset using this method was 0.5065, which is a titch higher than the training dataset, but only by ~0.0015.
+
+
+# Variable selection
+
+We now graph the importance of your 10 features.
+
+```{r}
+plot(varImp(m1, scale = TRUE))
+```
+
+
+**Explanataion:**
+
+> <span style="color:red;font-weight:bold">TODO</span>: *write your line-by-line explanation of the code here*
+
+Use delivered 'plot' function to see the Variable Importance of our model.
