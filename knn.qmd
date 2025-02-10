@@ -1,0 +1,114 @@
+---
+title: $K$NN
+author: Mike Kimmell
+date: "02/10/2025"
+
+format: 
+  html:  
+    embed-resources: true
+
+---
+
+**Abstract:**
+
+This is a technical blog post of **both** an HTML file *and* [.qmd file](knn.qmd) hosted on GitHub pages.
+
+# 1. Setup
+
+```{r}
+library(tidyverse)
+library(caret)
+library(fastDummies)
+wine <- readRDS(gzcon(url("https://github.com/cd-public/D505/raw/master/dat/pinot.rds")))
+```
+
+## 2. $K$NN Concepts
+
+> There are a few basic considerations when choosing an appropriate $K$ value. The first, and most trivial, is to avoid even $K$ values. This prevents ties in classification and avoids unnecessary ambiguity. Next, we want to avoid $K$ values that are either too low or too high. In general, a low $K$ value can lead to overfitting in the model, capturing too much noise and/or fitting to meaningless patterns in the data. Increasing the $K$ value will start to smooth out that noise, but if it is too high, it could begin to ignore relevant patterns and become too generalized.
+
+## 3. Feature Engineering
+
+1. Create a version of the year column that is a *factor* (instead of numeric).
+2. Create dummy variables that indicate the presence of "cherry", "chocolate" and "earth" in the description.
+  - Take care to handle upper and lower case characters.
+3. Create 3 new features that represent the interaction between *time* and the cherry, chocolate and earth indicators.
+4. Remove the description column from the data.
+
+```{r}
+wino <- wine %>%
+  mutate(year_f = as.factor(year)) %>%
+  mutate(description = tolower(description)) %>%
+  mutate(note_cherry = str_detect(description,"cherry")) %>% 
+  mutate(note_chocolate = str_detect(description,"chocolate")) %>%
+  mutate(note_earth = str_detect(description,"earth")) %>%
+  mutate(notes_90s = year < 2000 & (str_detect(description,"cherry") | 
+                                      str_detect(description,"chocolate") | 
+                                      str_detect(description,"earth")
+                                    )
+         ) %>%
+  mutate(notes_00s_early = year >= 2000 & year <=2005 & (str_detect(description,"cherry") | 
+                                      str_detect(description,"chocolate") | 
+                                      str_detect(description,"earth")
+                                    )
+         ) %>%
+  mutate(notes_00s_late = year >= 2006 & year <2010 & (str_detect(description,"cherry") | 
+                                      str_detect(description,"chocolate") | 
+                                      str_detect(description,"earth")
+                                    )
+         ) %>%
+  mutate(notes_10s = year >= 2010 & (str_detect(description,"cherry") | 
+                                      str_detect(description,"chocolate") | 
+                                      str_detect(description,"earth")
+                                    )
+         ) %>%
+  select(-description)
+  
+```
+## 4. Preprocessing
+
+1. Preprocess the dataframe from the previous code block using BoxCox, centering and scaling of the numeric features
+2. Create dummy variables for the `year` factor column
+
+```{r}
+wino %>% 
+  preProcess(method = c("BoxCox","center","scale")) %>% 
+  predict(wino) %>%
+  dummy_columns(select_columns=c("year_f")) %>% #from fastDummies package
+  head(n=10)
+```
+
+
+## 5. Running $K$NN
+
+1. Split the dataframe into an 80/20 training and test set
+2. Use Caret to run a $K$NN model that uses our engineered features to predict province
+  - use 5-fold cross validated subsampling 
+  - allow Caret to try 15 different values for $K$
+3. Display the confusion matrix on the test data
+
+
+```{r}
+wine_index <- createDataPartition(wino$province, p = 0.8, list = FALSE)
+train <- wino[ wine_index, ]
+test <- wino[-wine_index, ]
+
+fit <- train(province ~ .,
+             data = train, 
+             method = "knn",
+             tuneLength = 15,
+             trControl = trainControl(method = "cv", number = 5))
+
+confusionMatrix(predict(fit, test),factor(test$province))
+```
+
+## 6. Kappa
+
+How do we determine whether a Kappa value represents a good, bad or some other outcome?
+
+> The value of the Kappa statistic generally lies between 0 and 1, and higher values indicate higher levels of agreement in the model. Squaring this value can give us a more intuitive measurement of 'Reliability' in the model. In the model shown above, we arrived at a Kappa value of less than .2, which corresponds to less than 4% reliability. With almost full assurity, we can say that this is "bad", and furthermore, one could say that this model is unusable. In general, we would look for much higher values of Kappa to achieve "good"/"reliable" results. Depending on the question we are trying to answer, we might look for values greater than 0.4, or in more critical contexts, values greater than 0.8. For extremely high values of Kappa, we should be on the lookout for general overfitting in the model, or specific features that create a leak in the model.
+
+## 7. Improvement
+
+How can we interpret the confusion matrix, and how can we improve in our predictions?
+
+> In our specific example, ran above, we can see quite a few things that we can improve upon. First, we can see that the model tends to predict almost only California and Oregon, and even between those two provinces, it isn't particularly accurate. Next, reviewing the overall statistics, we can see that our accuracy is only slightly above 50%, which is almost no better than flipping a coin. Our Kappa value is also below 0.2, indicating less tahn 4% reliability in our model. Looking at the individual statistics, we can see relatively high specificity in almost all classes, but extremely low sensitivity for anything other than California. There are many opportunities to improve here, and my gut instinct is to rework our custom features. The custom features I created are clearly too generalized. By specifying further on particular years and particular notes (rather than all 3 together), we should pick up on more nuance.
