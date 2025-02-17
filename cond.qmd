@@ -1,0 +1,131 @@
+---
+title: Conditional Probability
+author: Mike Kimmell
+date: "02/17/2025"
+
+format: 
+  html:
+    embed-resources: true
+---
+  
+  **Abstract:**
+  
+  This is a technical blog post of **both** an HTML file *and* [.qmd file](cond.qmd) hosted on GitHub pages.
+
+# 1. Setup
+
+**Step Up Code:**
+
+```{r}
+sh <- suppressPackageStartupMessages
+sh(library(tidyverse))
+sh(library(caret))
+sh(library(fastDummies))
+sh(library(naivebayes))
+sh(library(tidytext))
+wine <- readRDS(gzcon(url("https://github.com/cd-public/D505/raw/master/dat/pinot.rds")))
+```
+
+# 2. Conditional Probability
+
+Calculate the probability that a Pinot comes from Burgundy given it has the word 'fruit' in the description.
+
+$$
+P({\rm Burgundy}~|~{\rm Fruit})
+$$
+
+```{r}
+wino <- wine %>% 
+  mutate(year_f = as.factor(year)) %>% 
+  mutate(fruit = str_detect(description,"fruit"))
+
+burgundy_and_fruity <- nrow(filter(wino, province=="Burgundy" & fruit))/nrow(wino)
+fruity <- nrow(filter(wino, fruit))/nrow(wino)
+burgundy_and_fruity/fruity
+```
+> The probability of Burgundy given Fruit, is roughly 22%.
+
+# 3. Naive Bayes Algorithm
+
+We train a naive bayes algorithm to classify a wine's province using:
+  1. An 80-20 train-test split.
+2. Three features engineered from the description
+3. 5-fold cross validation.
+
+We report Kappa after using the model to predict provinces in the holdout sample.
+
+```{r}
+winy <- wine %>% 
+  mutate(year_f = as.factor(year)) %>% 
+  mutate(fruit = str_detect(description,"fruit")) %>% 
+  mutate(sour = str_detect(description,"sour")) %>%
+  mutate(tannins = str_detect(description,"tannins")) %>%
+  select(-description, year)
+
+wine_index <- createDataPartition(winy$province, p = 0.80, list = FALSE)
+train <- winy[ wine_index, ]
+test <- winy[-wine_index, ]
+
+fit <- train(province ~ .,
+             data = train, 
+             method = "naive_bayes",
+             metric = "Kappa",
+             trControl = trainControl(method = "cv", number=5))
+
+confusionMatrix(predict(fit, test),factor(test$province))
+
+```
+
+> Our Kappa for this model comes in at around 0.15 which yield a reliability score of about 2%, which is...extremely unreliable. Looking at our confusion matrix, we can see that the model still prefers to guess California over everything else.
+
+# 4. Frequency Differences
+
+We find the three words that most distinguish New York Pinots from all other Pinots.
+
+```{r}
+df <- wine %>% #mostly pulled from the lecture slides, this block gets us our words
+  unnest_tokens(word, description) %>%
+  anti_join(stop_words) %>%
+  filter(!(word %in% c("wine","pinot","drink","noir","vineyard","palate","notes","flavors","bottling"))) %>%
+  count(id, word)%>%
+  group_by(id) %>% 
+  mutate(freq = n/sum(n)) %>% 
+  mutate(exists = (n>0)) %>% 
+  ungroup() %>% 
+  group_by(word)%>%
+  mutate(total = sum(n)) %>% 
+  left_join(select(wine, id, province), by = "id")%>% 
+  count(province, word) %>%
+  group_by(province) %>%
+  arrange(province, desc(n))
+
+temp_df <- df %>% #I wanted to get word frequency, and I couldn't remember how to do a window function in R
+  group_by(province) %>% #So, these next few lines do it the long way around
+  summarize(
+    tot = sum(n)
+  )
+df2 <- df %>%
+  left_join(select(temp_df,province,tot), by = "province")
+
+df2 <- df2 %>%
+  mutate(freq = (n/tot)*100)
+
+#Now we take a look at the top New York words to see what they are
+df2 %>% filter (province == 'New_York') %>%
+  head(n=10)
+
+dfny <- df2 %>% filter(province == "New_York" & word %in% c("cherry","tannins","finish","acidity","red","black",
+                            "concentrated","ripe","bright","brisk"))
+#Filter df2 down to just these words and visualize
+df2 %>% filter (province != "New_York" & word %in% c("cherry","tannins","finish","acidity","red","black",
+                            "concentrated","ripe","bright","brisk")) %>%
+  ggplot(aes(word,freq, shape=province)) +
+    geom_point() +
+    geom_point(data=dfny, color="red") +
+    coord_flip() +
+    theme_bw()
+  
+
+```
+
+> Using the simple plot above, we can see that New York has 4 of its most used words used more frequently than the other provinces. Most frequently, it uses the word 'cherry' and while less frequent in its own usage of words, it uses the words 'concentrated', 'bright', and 'brisk' more often than the other provinces.
