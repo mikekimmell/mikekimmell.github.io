@@ -4,3 +4,5 @@
 <a href="https://mikekimmell.github.io/wine_features.html">Homework 2</a>
 
 <a href="https://mikekimmell.github.io/knn.html">Homework 3</a>
+
+<a href="https://mikekimmell.github.io/cond.html">Homework 4</a>
