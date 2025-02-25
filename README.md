@@ -6,3 +6,5 @@
 <a href="https://mikekimmell.github.io/knn.html">Homework 3</a>
 
 <a href="https://mikekimmell.github.io/cond.html">Homework 4</a>
+
+<a href="https://mikekimmell.github.io/classify.html">Homework 5</a>
