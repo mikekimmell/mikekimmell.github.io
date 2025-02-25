@@ -1,0 +1,133 @@
+---
+title: "Classification"
+author: "Mike Kimmell"
+date: "02/24/2025"
+
+format: 
+  html:
+    embed-resources: true
+---
+  
+  **Abstract:**
+  
+  This is a technical blog post of **both** an HTML file *and* [.qmd file](classify.qmd) hosted on GitHub pages.
+
+# 1. Setup
+
+**Step Up Code:**
+
+```{r}
+sh <- suppressPackageStartupMessages
+sh(library(tidyverse))
+sh(library(caret))
+sh(library(naivebayes))
+sh(library(tidytext))
+sh(library(SnowballC))
+sh(library(pROC))   
+wine <- readRDS(gzcon(url("https://github.com/cd-public/D505/raw/master/dat/pinot.rds")))
+```
+
+# 2. Logistic Concepts
+
+Why do we call it Logistic Regression even though we are using the technique for classification?
+
+> While it is true that Logistic Regressions is primarily used for classification, it's ultimately using the odds ratio and a linearly combined list of terms to produce a continuous quantifiable value. More specifically, it is looking for the inflection point where the probability of something 'being a thing' is more likely that the probability of it not 'occuring'being a thing'.
+
+# 3. Modeling
+
+We train a logistic regression algorithm to classify a whether a wine comes from Marlborough using:
+
+1. An 80-20 train-test split.
+2. Three features engineered from the description
+3. 5-fold cross validation.
+
+We report Kappa after using the model to predict provinces in the holdout sample.
+
+```{r function_creation}
+## Here, we shamelessly steal the functions that were created for us in the weeks lecture.
+## I decided to leave out stem words for this exercise.
+
+## This first function extracts all of the description of wines and returns just the words
+    ## The second arguement gets rid of a custom list of words that we supply.
+    ## While the function also removed stop words, generally
+desc_to_words <- function(df, omits) { 
+  df %>%
+    unnest_tokens(word, description) %>%
+    anti_join(stop_words) %>%
+    filter(!(word %in% omits))
+}
+
+## This second function gives us our count of words that appear greater than 'j' times, Which is the second argument.
+filter_by_count <- function(df, j) { 
+  df %>%
+    count(id, word) %>% 
+    group_by(id) %>% mutate(exists = (n>0)) %>% ungroup() %>% 
+    group_by(word) %>% 
+    mutate(total = sum(n)) %>% 
+    filter(total > j)
+}
+
+## This function will take our newly created list of word and build dummy variables for our original dataframe
+pivoter <- function(words, df) {
+  words %>%
+    pivot_wider(id_cols = id, names_from = word, values_from = exists, values_fill = list(exists=0)) %>% 
+    right_join(select(df,id,province)) %>% 
+    drop_na() %>% 
+    select(-id)
+}
+
+## And Lastly, this one brings it all back together into one tidy little function.
+wine_words <- function(df, j) { 
+
+  words <- desc_to_words(df, omit_these)
+  
+  words <- filter_by_count(words, j)
+
+  pivoter(words, df)
+}
+
+```
+
+
+```{r do_things}
+## Now we can do things, first, let's create a list of words we want gone
+omit_these <- c("fruit","tannins","wine","pinot", "finish",
+                "vineyard","red","taste","flavors", "palate")
+
+
+win_borough <- wine_words(wine, 1500) %>% 
+           mutate(marlborough = as.factor(province == "Marlborough")) %>%
+           select(-province)
+wine_index <- createDataPartition(win_borough$marlborough, p = 0.80, list = FALSE)
+train <- win_borough[wine_index, ]
+test <- win_borough[-wine_index, ]
+
+fit_borough <- train(marlborough ~ .,
+             data=train,
+             method="glm",
+             family="binomial",
+             trControl = trainControl(method = "cv", number = 5))
+
+fit_borough
+```
+> By constraining down to only a few variables, our Kappa value has been driven into the ground, zero to be precise. To double-check that I didn't break this model entirely, I ran this with a lower word threshold of '500' and it returned a Kappa value of roughly 0.5. But that was using 37 differnet features, rather than just 4.
+
+# 4. Binary vs Other Classification
+
+What is the difference between determining some form of classification through logistic regression versus methods like $K$-NN and Naive Bayes which performed classifications.
+
+> Linear Regression is best used when the question being asked has a binary result, Yes or No, for example. It can be very powerful in determining the usefullness of certain features for specfic compenents of a given class. As shown above, whether or not the Wine came from Marlborough. It can, however, lend itself to overfitting if too many features are added. $K$NN and Naive Bayes on the other hand, will derive predictions to one of many components in a class, questions like "Which province does this wine come from" or "what year was this wine made". Two prominent considerations for these models are that $K$NN tends to struggle when datasets get very large (and with many many features), and Naive Bayes requires existing categorical features to appear in both the training and test data sets, which can be hard for 'rare' features.
+
+
+# 5. ROC Curves
+
+We can display an ROC for the model to explain your model's quality.
+
+```{r roc_model}
+prob <- predict(fit_borough, newdata = test, type = "prob")[,2]
+myRoc <- roc(test$marlborough, prob)
+plot(myRoc)
+auc(myRoc)
+```
+
+> Only about 70% of our data falls under the curve in this model. In particular, we can see the curve seems to follow the diagonal fairly closely until our specificity has dropped off at around 0.75 and 0.6. Only then does the mode begin to have a signficant rise in Sensititivity. This is likely due to how few features we have in this particular model, and the general scarcity of Marlborough wines in the dataset.
