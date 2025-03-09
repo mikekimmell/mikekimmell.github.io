@@ -1,0 +1,256 @@
+---
+title: Model 1
+author: Mike Kimmell & Summer Tucker
+date: "03/10/2025"
+
+format: 
+  html:  
+    embed-resources: true
+
+---
+
+**Abstract:**
+
+This is a technical blog post of **both** an HTML file *and* [.qmd file](model1.qmd) hosted on GitHub pages.
+
+# 1. Setup
+
+```{r}
+sh <- suppressPackageStartupMessages
+sh(library(tidyverse))
+sh(library(tidytext))
+sh(library(caret))
+sh(library(naivebayes))
+sh(library(fastDummies))
+wine <- readRDS(gzcon(url("https://github.com/cd-public/D505/raw/master/dat/pinot.rds")))
+```
+
+## 2. Functions
+
+```{r}
+#function for calculating relative word count
+
+wc <- function(df, omits) {
+  count <- nrow(df)
+  df %>%
+    unnest_tokens(word, description) %>% 
+    anti_join(stop_words) %>%
+    filter(!(word %in% omits)) %>% 
+    group_by(word) %>% 
+    mutate(total=n()) %>% 
+    count() %>%
+    ungroup() %>% 
+    mutate(n=n/count)
+}
+```
+
+```{r}
+omits = c("pinot", "noir", "wine") #Basic words to omit
+#Breaking down each province into their relative word counts
+wc_OR <- wc(wine %>% filter(province=="Oregon") %>% select(description), omits)
+wc_CA <- wc(wine %>% filter(province=="California") %>% select(description), omits)
+wc_Marl <-wc(wine %>% filter(province=="Marlborough") %>% select(description), omits)
+wc_NY  <- wc(wine %>% filter(province=="New_York") %>% select(description), omits)
+wc_Casa  <- wc(wine %>% filter(province=="Casablanca_Valley")%>% select(description), omits)
+wc_Burg <-wc(wine %>% filter(province=="Burgundy")%>% select(description), omits)
+```
+## 3. Sentiment Words
+
+```{r}
+#Use tidytext to acquire 'Sentiments'
+wine_sentiment <- get_sentiments("bing")
+wine_sentiment_p <- get_sentiments("bing") %>% filter(sentiment=="positive")
+wine_sentiment_n <- get_sentiments("bing") %>% filter(sentiment=="negative")
+
+
+#pulling out words from the description
+#getting a count of that word
+#joining sentiment, only keeping words that are sentiments
+
+#Oregon common sentiment words: pretty, fresh, elegant (range 258-190)
+wine %>% filter(province=="Oregon")%>%
+  unnest_tokens(word, description) %>% 
+  anti_join(stop_words) %>%
+  filter(!(word %in% omits)) %>% 
+  group_by(word) %>% 
+  mutate(total=n())%>%
+  count() %>%
+  ungroup() %>% 
+  arrange(desc(n)) %>%
+  inner_join(wine_sentiment,"word") %>%
+  head(n=4)
+
+#California common sentiment words: dark, soft, fresh (658-403)
+wine %>% filter(province=="California")%>%
+  unnest_tokens(word, description) %>% 
+  anti_join(stop_words) %>%
+  filter(!(word %in% omits)) %>% 
+  group_by(word) %>% 
+  mutate(total=n())%>%
+  count() %>%
+  ungroup() %>% 
+  arrange(desc(n)) %>%
+  inner_join(wine_sentiment,"word") %>%
+  head(n=4)
+
+#New York common sentiment words: bright, brisk, soft (30-29)
+wine %>% filter(province=="New_York")%>%
+  unnest_tokens(word, description) %>% 
+  anti_join(stop_words) %>%
+  filter(!(word %in% omits)) %>% 
+  group_by(word) %>% 
+  mutate(total=n())%>%
+  count() %>%
+  ungroup() %>% 
+  arrange(desc(n)) %>%
+  inner_join(wine_sentiment,"word") %>%
+  head(n=4)
+
+#Casablanca Valley common sentiment words: fresh, lean solid (26-12)
+wine %>% filter(province=="Casablanca_Valley")%>%
+  unnest_tokens(word, description) %>% 
+  anti_join(stop_words) %>%
+  filter(!(word %in% omits)) %>% 
+  group_by(word) %>% 
+  mutate(total=n())%>%
+  count() %>%
+  ungroup() %>% 
+  arrange(desc(n)) %>%
+  inner_join(wine_sentiment,"word") %>%
+  head(n=4)
+
+#Marlborough common sentiment words: supple, crisp, bright (48-23)
+wine %>% filter(province=="Marlborough")%>%
+  unnest_tokens(word, description) %>% 
+  anti_join(stop_words) %>%
+  filter(!(word %in% omits)) %>% 
+  group_by(word) %>% 
+  mutate(total=n())%>%
+  count() %>%
+  ungroup() %>% 
+  arrange(desc(n)) %>%
+  inner_join(wine_sentiment,"word") %>%
+  head(n=4)
+
+#Burgundy common sentiment words: rich, soft, dark (317-208)
+wine %>% filter(province=="Burgundy")%>%
+  unnest_tokens(word, description) %>% 
+  anti_join(stop_words) %>%
+  filter(!(word %in% omits)) %>% 
+  group_by(word) %>% 
+  mutate(total=n())%>%
+  count() %>%
+  ungroup() %>% 
+  arrange(desc(n)) %>%
+  inner_join(wine_sentiment,"word") %>%
+  head(n=4)
+
+```
+
+## 4. Word Differentiation
+
+```{r}
+#Word Differentiation between select Provinces
+
+#OR vs CA
+diff_OR_CA <- wc_OR %>%
+  inner_join(wc_CA, by = "word", suffix = c("_OR", "_CA")) %>%
+  mutate(diff = n_OR - n_CA) %>%
+  arrange(desc(abs(diff))) #Most different on fruit, palate, nose
+
+#CA vs Marl
+diff_Marl_CA <- wc_Marl %>%
+  inner_join(wc_CA, by = "word", suffix = c("_Marl", "_CA")) %>%
+  mutate(diff = n_Marl - n_CA) %>%
+  arrange(desc(abs(diff))) #Most different on... drink, notes, palate
+
+#NY vs CA
+diff_NY_CA <- wc_NY %>%
+  inner_join(wc_CA, by = "word", suffix = c("_NY", "_CA")) %>%
+  mutate(diff = n_NY - n_CA) %>%
+  arrange(desc(abs(diff))) #Most different on tannins, cherry, notes
+
+#Casa vs. CA
+diff_Casa_CA <- wc_Casa %>%
+  inner_join(wc_CA, by = "word", suffix = c("_Casa", "_CA")) %>%
+  mutate(diff = n_Casa - n_CA) %>%
+  arrange(desc(abs(diff))) #Most different on flavors, plum, aromas
+
+#Burg vs CA
+diff_Burg_CA <- wc_Burg %>%
+  inner_join(wc_CA, by = "word", suffix = c("_Burg", "_CA")) %>%
+  mutate(diff = n_Burg - n_CA) %>%
+  arrange(desc(abs(diff))) #Most different on tannins, drink, fruits
+
+
+```
+
+>
+
+## 5. Feature Engineering
+
+```{r}
+w_feat <- wine %>%
+  mutate(year=as.factor(year))%>%
+  mutate(description = tolower(description)) %>%
+  
+  #Sentiment Words from Part 3
+  mutate(dark = str_detect(description,"dark")) %>%
+  mutate(soft = str_detect(description,"soft")) %>%
+  mutate(pretty = str_detect(description,"pretty")) %>%
+  mutate(fresh = str_detect(description,"fresh")) %>%
+  mutate(rich = str_detect(description,"rich")) %>%
+  mutate(supple = str_detect(description,"supple")) %>%
+  mutate(crisp = str_detect(description,"crisp")) %>%
+  mutate(elegant = str_detect(description,"elegant")) %>% 
+  
+  #Word Freq and Differentiation from Part 4
+  mutate(fruit = str_detect(description,"fruit")) %>% 
+  mutate(black = str_detect(description,"black")) %>%
+  mutate(palate = str_detect(description,"palate")) %>%
+  mutate(nose = str_detect(description,"nose")) %>%
+  mutate(tannins = str_detect(description,"tannins")) %>%
+  mutate(cherry = str_detect(description,"cherry")) %>%  
+  mutate(plum = str_detect(description,"plum")) %>%
+  mutate(aroma = str_detect(description,"aroma")) %>%
+  mutate(acidity = str_detect(description,"acidity")) %>%
+  
+  select(-description)
+  
+```
+## 6. Preprocessing
+
+```{r}
+w_feat2 <- w_feat %>%
+  preProcess(method = c("BoxCox", "center", "scale")) %>%
+  predict(w_feat) %>%
+  dummy_cols(select_columns = "year",
+             remove_most_frequent_dummy = TRUE,
+             remove_selected_columns = TRUE)
+```
+
+
+## 7. Running $K$NN
+
+```{r}
+wine_index2 <- createDataPartition(w_feat2$province, p = 0.80, list = FALSE)
+train_set2 <- w_feat2[ wine_index2, ]
+test_set2 <- w_feat2[-wine_index2, ]
+
+fit <- train(province ~ .,
+             data = train_set2, 
+             method = "knn",
+             tuneLength = 15,
+             metric = "Kappa",
+             trControl = trainControl(method = "cv", number = 5))
+
+confusionMatrix(predict(fit, test_set2),factor(test_set2$province))
+```
+
+## 8. Writing the File
+
+```{r}
+write_rds(w_feat2, "model1.rds")
+```
+
+This data file is also available [here](model1.rds)
