@@ -1,0 +1,174 @@
+---
+title: Model 2
+author: Mike Kimmell & Summer Tucker
+date: "04/14/2025"
+
+format: 
+  html:  
+    embed-resources: true
+
+---
+
+**Abstract:**
+
+This is a technical blog post of **both** an HTML file *and* [.qmd file](model2.qmd) hosted on GitHub pages.
+
+# 1. Setup
+
+```{r}
+sh <- suppressPackageStartupMessages
+sh(library(tidyverse))
+sh(library(tidytext))
+sh(library(caret))
+sh(library(naivebayes))
+sh(library(fastDummies))
+sh(library(pROC))
+bank_start <- readRDS(gzcon(url("https://cd-public.github.io/D505/dat/BankChurners.rds")))
+```
+
+## 2. Functions
+
+```{r}
+#function for calculating relative odds
+
+get_odds <- function(fit) {
+  as.data.frame(t(exp(coef(fit$finalModel))))   %>%
+  rownames_to_column(var = "name") %>%
+  pivot_longer(-name, names_to = "class", values_to = "odds") %>%
+  arrange(desc(odds)) %>%
+  head()
+}
+
+#function for Confusion Matrix
+get_matrix <- function(fit, df) {
+  pred <- factor(predict(fit, newdata = df))
+  confusionMatrix(pred,factor(df$Churn))
+}
+```
+
+## 3. Dataframe Cleanup
+
+```{r}
+bank_clean <- bank_start %>%
+  mutate(Education_Level = as.factor(Education_Level)) %>%
+  mutate(Marital_Status = as.factor(Marital_Status)) %>%
+  mutate(Income_Category = as.factor(Income_Category)) %>%  
+  mutate(Card_Category = as.factor(Card_Category)) %>%
+  mutate(Gender = as.factor(Gender)) %>%  
+  mutate(Churn = as.factor(Churn)) %>%
+  dummy_cols() %>% #Dummy Column Everything to introduce Lots of features
+  select(-c(Education_Level, Marital_Status, Income_Category, Card_Category, Gender, Churn_no, Churn_yes))
+
+```
+
+## 4. Find Interesting/Complex Features
+
+```{r}
+pr_bank <- prcomp(x = select(bank_clean,-Churn), scale = T, center = T)
+summary(pr_bank)
+
+screeplot(pr_bank, type = "lines") # 3-5 seems to be our sweet-spot
+
+rownames_to_column(as.data.frame(pr_bank$rotation)) %>% 
+  select(1:5) %>% #we'll go with 4
+  filter(abs(PC1) >= 0.35 | abs(PC2) >= 0.35 | abs(PC3) >= 0.35 | abs(PC4) >= 0.35) 
+  #Tease out the most impactful features
+
+prc <- bind_cols(select(bank_clean, Churn), as.data.frame(pr_bank$x)) %>% select(1:5) %>%
+  rename("M_Low_Credit/Open" = PC1, "M_Blue_No_Trans" = PC2, "Young_New_Trans" = PC3, "Old_Trans"= PC4) 
+  #New Names
+
+prc %>%
+  pivot_longer(cols = -Churn, names_to = "component", values_to = "loading") %>%
+  ggplot(aes(loading, fill=Churn)) + geom_density(alpha = 0.5) + facet_grid(.~component) 
+  #1, 3, and 4 seem most differentiated
+```
+
+## 5. Dataframe Cleanup
+
+```{r}
+bank_clean <- bank_clean %>% #Add some new complex vairables based on PCR
+  mutate(Young_new_trans = Customer_Age < mean(Customer_Age) & Months_on_book < mean(Months_on_book) &
+                           Total_Trans_Amt > mean(Total_Trans_Amt) & Total_Trans_Ct > mean(Total_Trans_Ct)) %>%
+  mutate(Old_trans = Customer_Age > mean(Customer_Age) & Months_on_book > mean(Months_on_book) &
+                           Total_Trans_Amt > mean(Total_Trans_Amt) & Total_Trans_Ct > mean(Total_Trans_Ct)) %>%
+  mutate(M_low_open = Gender_M == "1" & Credit_Limit > mean(Credit_Limit) &
+                           Avg_Open_To_Buy > mean(Avg_Open_To_Buy))
+
+```
+
+
+## 6. Running Logit Regression
+
+```{r}
+bank_index <- createDataPartition(bank_clean$Churn, p = 0.80, list = FALSE)
+train_clean <- bank_clean[ bank_index, ]
+test_clean <- bank_clean[-bank_index, ]
+
+fit_clean <- train(Churn ~ .,
+      data = bank_clean,
+      trControl = trainControl(method = "cv", number = 5),
+      method = "glm",
+      family = "binomial",
+      maxit = 5)
+
+get_odds(fit_clean)
+plot(varImp(fit_clean, scale = TRUE))
+
+```
+## 7. Running Logit Regression (Again)
+
+```{r}
+bank_simple <- bank_clean %>%
+  select(Total_Trans_Ct, Total_Trans_Amt,
+         Total_Relationship_Count, Total_Ct_Chng_Q4_Q1, Total_Revolving_Bal, 
+         Contacts_Count_12_mon, Months_Inactive_12_mon, Gender_F, Dependent_count,
+         Churn) #Filter down to top performing metrics using VarImp Plot
+
+
+bank_index <- createDataPartition(bank_simple$Churn, p = 0.80, list = FALSE)
+train_simple <- bank_simple[ bank_index, ]
+test_simple <- bank_simple[-bank_index, ]
+
+fit_simple <- train(Churn ~ .,
+      data = bank_simple,
+      trControl = trainControl(method = "cv", number = 5),
+      method = "glm",
+      family = "binomial",
+      maxit = 5)
+
+plot(varImp(fit_simple, scale = TRUE))
+
+```
+## 8. Running Final Logit Regression
+
+```{r}
+bank <- bank_clean %>%
+  select(Total_Trans_Ct, Total_Trans_Amt,
+         Total_Relationship_Count, Total_Ct_Chng_Q4_Q1, Total_Revolving_Bal,
+         Churn) #Filter down to top 5 performing metrics using VarImp Plot
+
+
+bank_index <- createDataPartition(bank$Churn, p = 0.80, list = FALSE)
+train_set <- bank[ bank_index, ]
+test_set <- bank[-bank_index, ]
+
+fit <- train(Churn ~ .,
+      data = bank,
+      trControl = trainControl(method = "cv", number = 5),
+      method = "glm",
+      family = "binomial",
+      maxit = 5)
+
+fit
+get_matrix(fit, test_set)
+
+```
+
+## 9. Writing the File
+
+```{r}
+write_rds(bank, "model2.rds")
+```
+
+This data file is also available [here](model2.rds)
