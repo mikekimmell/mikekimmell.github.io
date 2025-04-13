@@ -10,3 +10,5 @@
 <a href="https://mikekimmell.github.io/classify.html">Homework 5</a>
 
 <a href="https://mikekimmell.github.io/model1.html">Model 1</a>
+
+<a href="https://mikekimmell.github.io/model2.html">Model 2</a>
