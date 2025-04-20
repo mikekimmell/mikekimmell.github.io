@@ -3,6 +3,8 @@ title: "Final Presentation"
 author: "Mike Kimmell & Summer Tucker"
 date: "04/21/2025"
 format: revealjs
+html:  
+embed-resources: true
 ---
   
 # Methods and Models
