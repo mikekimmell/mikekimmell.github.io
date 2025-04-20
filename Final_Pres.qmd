@@ -1,0 +1,145 @@
+---
+title: "Final Presentation"
+author: "Mike Kimmell & Summer Tucker"
+date: "04/21/2025"
+format: revealjs
+---
+  
+# Methods and Models
+  
+1. Cleaning up the data
+2. $K$NN and Random Forest
+3. A brief foray into PCA
+
+# Data Wrangling
+
+- Removing pesky %
+- Cleaning up column headers
+- Removing unneeded columns
+  - Columns that were used to generate 'Profit'
+  - Columns with no useful data (e.g, 'src_Amazon FBM')
+- Converting to numeric or factor data types
+- Generating 'Profit'
+  - Factorize 'Profit'
+
+  
+# $K$NN
+  
+- Why $K$NN?
+  - Fast
+  - Dummy Columns are quick and easy to engineer
+- Issues with Model, Year_min, and Year_max
+- Run $K$NN with remaining variables
+- Iteratively ran model and reviewed variable importance to find the best features
+
+
+
+# Random Forest
+
+- Why Random Forest?
+  - Less data manipulation than $K$NN
+  - Adept at traversing categorical data
+  - Wanted to look for more complex relationships
+- Review variable importance to find the best features (again)
+
+# PCA Exploration
+
+- Why PCA?
+  - Wanted to explore any hidden relationships
+  - Would adding complex features change our previous models?
+- Engineer features based on PCA Analysis
+- Rerun through $K$NN
+
+
+# Results and Refinement
+
+- Top performers
+  - pct_Direct Sales
+  - 'src' columns
+  - Month columns
+- Consolidated features
+  - Combine 'Mobile' sources
+  - Combine Months into 'Quarters'
+- Rerun through $K$NN
+
+# Our Final Engineered Features
+
+```{r echo:false}
+# Libraries First
+library(tidyverse)
+library(janitor) #for converting to snake case
+
+engineer <- function(df) {
+  df <- df %>%
+    clean_names(case = "snake") %>%  #Convert to snake case
+    mutate(src_www=str_remove(src_www,"%")) %>% #Remove %'s
+    mutate(src_iphone=str_remove(src_iphone,"[%]")) %>%
+    mutate(src_android=str_remove(src_android,"[%]")) %>%
+    mutate(src_ipad=str_remove(src_ipad,"[%]")) %>%
+    mutate(src_manual=str_remove(src_manual,"[%]")) %>%
+    mutate(src_external=str_remove(src_external,"[%]")) %>%
+    mutate(src_facebookshop=str_remove(src_facebookshop,"[%]")) %>%
+    mutate(january=str_remove(january,"[%]")) %>%
+    mutate(february=str_remove(february,"[%]")) %>%
+    mutate(march=str_remove(march,"[%]")) %>%
+    mutate(april=str_remove(april,"[%]")) %>%
+    mutate(may=str_remove(may,"[%]")) %>%
+    mutate(june=str_remove(june,"[%]")) %>%
+    mutate(july=str_remove(july,"[%]")) %>%
+    mutate(august=str_remove(august,"[%]")) %>%
+    mutate(september=str_remove(september,"[%]")) %>%
+    mutate(october=str_remove(october,"[%]")) %>%
+    mutate(november=str_remove(november,"[%]")) %>%
+    mutate(december=str_remove(december,"[%]")) %>%
+    mutate(pct_direct_sales=str_remove(pct_direct_sales,"[%]")) %>%
+    
+    mutate(src_www=as.numeric(src_www)) %>%    #Converts to Numeric
+    mutate(src_iphone=as.numeric(src_iphone)) %>%
+    mutate(src_android=as.numeric(src_android)) %>%
+    mutate(src_ipad=as.numeric(src_ipad)) %>%
+    mutate(src_manual=as.numeric(src_manual)) %>%
+    mutate(src_external=as.numeric(src_android)) %>%
+    mutate(src_facebookshop=as.numeric(src_external)) %>%
+    mutate(january=as.numeric(january)) %>%
+    mutate(february=as.numeric(february)) %>%
+    mutate(march=as.numeric(march)) %>%
+    mutate(april=as.numeric(april)) %>%
+    mutate(may=as.numeric(may)) %>%
+    mutate(june=as.numeric(june)) %>%
+    mutate(july=as.numeric(july)) %>%
+    mutate(august=as.numeric(august)) %>%
+    mutate(september=as.numeric(september)) %>%
+    mutate(october=as.numeric(october)) %>%
+    mutate(november=as.numeric(november)) %>%
+    mutate(december=as.numeric(december)) %>%
+    mutate(pct_direct_sales=as.numeric(pct_direct_sales)) %>%
+    
+    mutate(q1 = january + february + march) %>% #Combine Some Columns
+    mutate(q2 = april + may + june) %>%
+    mutate(q3 = july + august + september) %>%
+    mutate(q4 = october + november + december) %>%
+    mutate(src_mobile = src_iphone + src_android + src_ipad) %>%
+    
+    select(pct_direct_sales, src_www, src_mobile, src_manual,
+           src_external, src_facebookshop,
+           q1, q2, q3, q4)
+}
+```
+
+``` {.r}
+pct_direct_sales
+src_www
+src_mobile
+src_manual
+src_external
+src_facebookshop
+q1
+q2
+q3
+q4
+```
+
+# QMD File
+
+Our Quarto Markdown file can be found [here](Final_Pres.qmd)
+This includes our 'engineer' function.
